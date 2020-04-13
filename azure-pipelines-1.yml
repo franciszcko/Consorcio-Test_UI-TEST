@@ -1,0 +1,80 @@
+# ASP.NET Core (.NET Framework)
+# Build and test ASP.NET Core projects targeting the full .NET Framework.
+# Add steps that publish symbols, save build artifacts, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+
+trigger:
+  branches:
+    include:
+    - '*' 
+    exclude: 
+    - '*'
+    
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+steps:
+
+- script: |
+   Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+   
+   choco install googlechrome --version=78.0.3904.108
+   
+   choco install javaruntime
+   
+   choco install selenium
+
+   choco install chromedriver --version=78.0.3904.700
+   
+  displayName: 'Tools Install'
+
+- task: CmdLine@2
+  inputs:
+    script: START /B java -jar C:\tools\selenium\selenium-server-standalone.jar -role hub -log log.txt
+  displayName: 'Creación de HUB'
+
+- task: CmdLine@2
+  inputs:
+    script: START /B java -Dwebdriver.chrome.driver=C:\ProgramData\chocolatey\bin\chromedriver.exe -jar C:\tools\selenium\selenium-server-standalone.jar -role node -hub http://localhost:4444/grid/register
+  displayName: 'Creción de nodo 1'
+
+- task: NuGetToolInstaller@0
+
+- task: NuGetCommand@2
+  inputs:
+    restoreSolution: '$(solution)'
+
+- task: VSBuild@1
+  inputs:
+    solution: '$(solution)'
+    msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:DesktopBuildPackageLocation="$(build.artifactStagingDirectory)\WebApp.zip" /p:DeployIisAppPath="Default Web Site"'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+
+- task: VSTest@2
+  inputs:
+    testSelector: 'testAssemblies'
+    testAssemblyVer2: |
+      **\*test*.dll
+      !**\*TestAdapter.dll
+      !**\obj\**
+    searchFolder: '$(System.DefaultWorkingDirectory)'
+    vsTestVersion: '16.0'
+    testRunTitle: 'Ejecución de pruebas'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+    diagnosticsEnabled: true
+    collectDumpOn: 'always'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'C:\EAAutoLogs'
+    ArtifactName: 'Logs'
+    publishLocation: 'Container'
+  condition: always()
+

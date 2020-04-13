@@ -1,0 +1,96 @@
+# ASP.NET Core (.NET Framework)
+# Build and test ASP.NET Core projects targeting the full .NET Framework.
+# Add steps that publish symbols, save build artifacts, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+
+trigger:
+  branches:
+    include:
+    - '*' 
+    exclude: 
+    - '*'
+    
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'x86'
+  buildConfiguration: 'Release'
+
+steps:
+
+- script: |
+   Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+   
+   choco install googlechrome --version=78.0.3904.108
+   
+   choco install javaruntime
+   
+   choco install selenium
+
+   choco install chromedriver --version=78.0.3904.700
+   
+  displayName: 'Tools Install'
+
+- task: CmdLine@2
+  inputs:
+    script: START /B java -jar C:\tools\selenium\selenium-server-standalone.jar -role hub -log log.txt
+  displayName: 'Creación de HUB'
+
+- task: CmdLine@2
+  inputs:
+    script: START /B java -Dwebdriver.chrome.driver=C:\ProgramData\chocolatey\bin\chromedriver.exe -jar C:\tools\selenium\selenium-server-standalone.jar -role node -hub http://localhost:4444/grid/register
+  displayName: 'Creción de nodo 1'
+
+- task: CmdLine@2
+  inputs:
+    script: START /B java -Dwebdriver.chrome.driver=C:\ProgramData\chocolatey\bin\chromedriver.exe -jar C:\tools\selenium\selenium-server-standalone.jar -role node -hub http://localhost:4444/grid/register
+  displayName: 'Creción de nodo 2'
+
+- task: VisualStudioTestPlatformInstaller@1
+  inputs:
+    packageFeedSelector: 'nugetOrg'
+    versionSelector: 'latestPreRelease'
+
+- task: NuGetToolInstaller@1
+  inputs:
+    versionSpec: '5.4.0'
+
+- task: NuGetCommand@2
+  inputs:
+    command: 'restore'
+    restoreSolution: '$(solution)'
+    feedsToUse: 'select'
+    noCache: true
+    disableParallelProcessing: true
+
+- task: VSBuild@1
+  inputs:
+    solution: '$(solution)'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+    clean: true
+    createLogFile: true
+
+- task: VSTest@2
+  inputs:
+    testSelector: 'testAssemblies'
+    testAssemblyVer2: |
+      **\*test*.dll
+      !**\*TestAdapter.dll
+      !**\obj\**
+    searchFolder: '$(System.DefaultWorkingDirectory)'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+    vsTestVersion: '16.0'
+    testRunTitle: 'Ejecución de pruebas'
+    diagnosticsEnabled: true
+    collectDumpOn: 'always'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'C:\EAAutoLogs'
+    ArtifactName: 'File LOG'
+    publishLocation: 'Container'
+  condition: always()
